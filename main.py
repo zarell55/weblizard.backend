@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+import psycopg2.extras
 from db import get_conn
 
 app = FastAPI()
@@ -18,13 +19,17 @@ def root():
 @app.get("/search")
 def search(q: str = Query(..., min_length=1)):
     conn = get_conn()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute("""
         SELECT
             url,
             title,
-            ts_headline(content, plainto_tsquery(%s)) AS snippet,
+            ts_headline(
+                'english',
+                coalesce(content, ''),
+                plainto_tsquery(%s)
+            ) AS snippet,
             pagerank
         FROM pages
         WHERE tsv @@ plainto_tsquery(%s)
@@ -38,12 +43,4 @@ def search(q: str = Query(..., min_length=1)):
     cur.close()
     conn.close()
 
-    return [
-        {
-            "url": r["url"],
-            "title": r["title"],
-            "snippet": r["snippet"],
-            "pagerank": r["pagerank"],
-        }
-        for r in results
-    ]
+    return results
